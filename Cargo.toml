@@ -1,0 +1,15 @@
+[package]
+name = "hodge-consensus"
+version = "0.1.0"
+edition = "2024"
+description = "Hodge decomposition of multi-agent consensus — every disagreement decomposes into gradient, curl, and harmonic components"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/SuperInstance/hodge-consensus"
+keywords = ["hodge", "consensus", "decomposition", "graph", "opinion"]
+categories = ["mathematics", "science", "data-structures"]
+
+[dev-dependencies]
+serde_json = "1"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
