@@ -1,18 +1,14 @@
 # hodge-consensus
 
-Five agents disagree about a decision. One disagreement can be resolved by adjusting Agent 3. Another is cyclic — A thinks X > Y, B thinks Y > Z, C thinks Z > X. A third is fundamental — they genuinely, irreconcilably disagree.
-
-The Hodge decomposition tells you which is which.
+Hodge decomposition of multi-agent disagreements. Every opinion flow on a graph splits into three orthogonal components — gradient (resolvable), curl (cyclic), and harmonic (irreconcilable). The Hodge theorem tells you which arguments can be won.
 
 ```
 opinion flow = gradient + curl + harmonic
 ```
 
-- **Gradient**: globally consistent — this disagreement has a correct answer
-- **Curl**: cyclic — agents are going in circles, but they'll converge
-- **Harmonic**: topological obstruction — these agents will NEVER agree
-
-The reader finishes understanding: **disagreement has structure. You can decompose it. You can predict which arguments end and which don't.**
+- **Gradient**: globally consistent pairwise differences. Someone is right, and the Hodge potential says who.
+- **Curl**: cyclic disagreements (A > B > C > A). They loop, but with enough discussion they converge.
+- **Harmonic**: topological obstructions. These agents will never agree — the graph structure prevents it.
 
 ## Install
 
@@ -21,529 +17,521 @@ The reader finishes understanding: **disagreement has structure. You can decompo
 hodge-consensus = "0.1.0"
 ```
 
-## Disagreement Has Structure: The 30-Line Demo
+## The 30-Line Demo
 
 ```rust
 use hodge_consensus::{OpinionGraph, HodgeComponents};
 
 fn main() {
     let mut g = OpinionGraph::new();
-
-    // 5 agents with pairwise agreement strengths
-    g.add_symmetric_edge("alice", "bob", 0.9);
-    g.add_symmetric_edge("bob", "carol", 0.7);
-    g.add_symmetric_edge("carol", "dave", 0.4);
-    g.add_symmetric_edge("dave", "eve", 0.8);
-    g.add_symmetric_edge("eve", "alice", 0.2);
-    g.add_symmetric_edge("alice", "carol", 0.5);
-    g.add_symmetric_edge("bob", "dave", 0.3);
+    g.add_symmetric_edge("alice", "bob", 0.8);
+    g.add_symmetric_edge("bob", "carol", 0.6);
+    g.add_symmetric_edge("carol", "alice", 0.3);
 
     let decomp = HodgeComponents::decompose(&g);
     let norms = decomp.norms();
+    println!("Gradient: {:.3}  (resolvable)", norms.gradient_norm);
+    println!("Curl:     {:.3}  (cyclic)", norms.curl_norm);
+    println!("Harmonic: {:.3}  (irreconcilable)", norms.harmonic_norm);
 
-    println!("Hodge Decomposition of Agent Opinions");
-    println!("=====================================");
-    println!();
-    println!("Total disagreement energy: {:.4}", norms.total_norm);
-    println!();
-    println!("  Gradient: {:.4} ({:.1}%) — resolvable",
-        norms.gradient_norm,
-        norms.gradient_norm * norms.gradient_norm / (norms.total_norm * norms.total_norm) * 100.0);
-    println!("  Curl:     {:.4} ({:.1}%) — cyclic, will converge",
-        norms.curl_norm,
-        norms.curl_norm * norms.curl_norm / (norms.total_norm * norms.total_norm) * 100.0);
-    println!("  Harmonic: {:.4} ({:.1}%) — irreconcilable",
-        norms.harmonic_norm,
-        norms.harmonic_norm * norms.harmonic_norm / (norms.total_norm * norms.total_norm) * 100.0);
-    println!();
-
-    let ortho = decomp.verify_orthogonality();
-    println!("Components orthogonal? {}", ortho.is_orthogonal);
-    println!("  gradient · curl = {:.6}", ortho.gradient_dot_curl);
-    println!("  gradient · harmonic = {:.6}", ortho.gradient_dot_harmonic);
-    println!("  curl · harmonic = {:.6}", ortho.curl_dot_harmonic);
-}
-```
-
-```
-Hodge Decomposition of Agent Opinions
-=====================================
-
-Total disagreement energy: 2.4124
-
-  Gradient: 2.3376 (93.9%) — resolvable
-  Curl:     0.4249 (3.1%) — cyclic, will converge
-  Harmonic: 0.5464 (2.9%) — irreconcilable
-
-Components orthogonal? true
-  gradient · curl = 0.000000
-  gradient · harmonic = 0.000000
-  curl · harmonic = 0.000000
-```
-
-94% of this disagreement is gradient — it CAN be resolved. The curl (3%) will work itself out. The harmonic (3%) won't. But it's small.
-
-## The Three Components, Made Concrete
-
-### Gradient: "This disagreement has a correct answer"
-
-When agents mostly agree on a ranking but differ on specifics, the disagreement is gradient-dominant. It's like everyone ordering the same restaurant dishes with minor preference differences — there exists a global ranking.
-
-```rust
-use hodge_consensus::{OpinionGraph, HodgeComponents};
-
-fn main() {
-    let mut g = OpinionGraph::new();
-
-    // Strong agreement in one direction — gradient-dominant
-    g.add_symmetric_edge("agent_0", "agent_1", 0.9);
-    g.add_symmetric_edge("agent_1", "agent_2", 0.8);
-    g.add_symmetric_edge("agent_2", "agent_3", 0.7);
-    g.add_symmetric_edge("agent_3", "agent_4", 0.6);
-    g.add_symmetric_edge("agent_0", "agent_2", 0.85);
-    g.add_symmetric_edge("agent_0", "agent_3", 0.75);
-    g.add_symmetric_edge("agent_0", "agent_4", 0.65);
-
-    let decomp = HodgeComponents::decompose(&g);
     let frac = decomp.energy_fractions();
-
-    println!("Gradient-dominant scenario (consistent agreement):");
-    println!("  Gradient: {:.1}%", frac.gradient * 100.0);
-    println!("  Curl:     {:.1}%", frac.curl * 100.0);
-    println!("  Harmonic: {:.1}%", frac.harmonic * 100.0);
-    println!();
-    println!("  → This dispute WILL resolve. High confidence.");
+    println!("{:.0}% of disagreement energy is in the gradient (solvable)", frac.gradient * 100.0);
 }
 ```
 
-```
-Gradient-dominant scenario (consistent agreement):
-  Gradient: 95.4%
-  Curl:     3.2%
-  Harmonic: 1.4%
-
-  → This dispute WILL resolve. High confidence.
-```
-
-### Curl: "They're going in circles"
-
-Agent A thinks X > Y. Agent B thinks Y > Z. Agent C thinks Z > X. This is a cyclic disagreement — it loops but doesn't indicate fundamental incompatibility.
-
-```rust
-use hodge_consensus::{OpinionGraph, HodgeComponents};
-
-fn main() {
-    // Create a cyclic disagreement: A→B→C→A with conflicting weights
-    let mut g = OpinionGraph::new();
-
-    g.add_edge("alice", "bob", 0.9);    // alice strongly agrees with bob
-    g.add_edge("bob", "carol", 0.9);    // bob strongly agrees with carol
-    g.add_edge("carol", "alice", -0.8); // carol DISAGREES with alice
-    g.add_edge("bob", "alice", 0.5);    // weak reverse
-    g.add_edge("carol", "bob", 0.5);    // weak reverse
-    g.add_edge("alice", "carol", -0.6); // alice disagrees with carol
-
-    let decomp = HodgeComponents::decompose(&g);
-    let frac = decomp.energy_fractions();
-
-    println!("Cyclic disagreement: Alice ↔ Bob ↔ Carol (with conflict)");
-    println!("  Gradient: {:.1}%", frac.gradient * 100.0);
-    println!("  Curl:     {:.1}%", frac.curl * 100.0);
-    println!("  Harmonic: {:.1}%", frac.harmonic * 100.0);
-    println!();
-
-    // Show each edge's decomposition
-    println!("Per-edge decomposition:");
-    println!("  {:25} | {:>8} | {:>8} | {:>8} | {:>8}",
-        "Edge", "Gradient", "Curl", "Harmonic", "Total");
-    for (k, (src, dst, _)) in g.edges.iter().enumerate() {
-        println!(
-            "  {:3} → {:3} ({:+.1f})       | {:>8.4} | {:>8.4} | {:>8.4} | {:>8.4}",
-            src, dst, g.edges[k].2,
-            decomp.gradient[k], decomp.curl[k], decomp.harmonic[k], decomp.total[k]
-        );
-    }
-}
-```
+## Architecture
 
 ```
-Cyclic disagreement: Alice ↔ Bob ↔ Carol (with conflict)
-  Gradient: 38.5%
-  Curl:     61.5%
-  Harmonic: 0.0%
-
-Per-edge decomposition:
-  Edge                       | Gradient |     Curl | Harmonic |    Total
-  alice → bob (+0.9)       |   0.4625 |   0.4375 |   0.0000 |   0.9000
-  bob → carol (+0.9)       |   0.4625 |   0.4375 |   0.0000 |   0.9000
-  carol → alice (-0.8)     |  -0.7250 |  -0.0750 |   0.0000 |  -0.8000
-  bob → alice (+0.5)       |  -0.4625 |  -0.0375 |   0.0000 |  -0.5000
-  carol → bob (+0.5)       |  -0.4625 |  -0.0375 |   0.0000 |  -0.5000
-  alice → carol (-0.6)     |   0.7250 |   0.0750 |   0.0000 |  -0.6000
+hodge-consensus
+├── lib.rs           — Re-exports + integration tests
+├── graph.rs         — OpinionGraph: directed weighted agent graph
+├── decomposition.rs — HodgeComponents: gradient + curl + harmonic
+├── harmonic.rs      — HarmonicAnalysis: connected components, H¹ dimension
+├── consensus.rs     — ConsensusState: iterative convergence protocol
+├── prediction.rs    — DisputePrediction: will this argument resolve?
+└── ranking.rs       — AgentRanking: who is most agreeable?
 ```
 
-61% curl. The disagreement is cyclic. But notice: harmonic is 0%. That means this argument WILL resolve — it's just going to take some back-and-forth.
+## Opinion Graphs
 
-### Harmonic: "They will NEVER agree"
-
-When agents are in disconnected groups, no amount of discussion will bridge the gap. The harmonic component measures this topological obstruction.
-
-```rust
-use hodge_consensus::{OpinionGraph, HodgeComponents, HarmonicAnalysis};
-
-fn main() {
-    // Two disconnected factions
-    let mut g = OpinionGraph::new();
-
-    // Faction A: strong internal agreement
-    g.add_edge("a1", "a2", 0.9);
-    g.add_edge("a2", "a1", 0.9);
-    g.add_edge("a1", "a3", 0.8);
-    g.add_edge("a3", "a1", 0.8);
-    g.add_edge("a2", "a3", 0.85);
-    g.add_edge("a3", "a2", 0.85);
-
-    // Faction B: strong internal agreement
-    g.add_edge("b1", "b2", 0.9);
-    g.add_edge("b2", "b1", 0.9);
-    g.add_edge("b1", "b3", 0.8);
-    g.add_edge("b3", "b1", 0.8);
-    g.add_edge("b2", "b3", 0.85);
-    g.add_edge("b3", "b2", 0.85);
-
-    // No edges between factions!
-
-    let decomp = HodgeComponents::decompose(&g);
-    let frac = decomp.energy_fractions();
-    let harmonic = HarmonicAnalysis::from_decomposition(&g, &decomp);
-
-    println!("Two disconnected factions:");
-    println!("  Gradient: {:.1}%", frac.gradient * 100.0);
-    println!("  Curl:     {:.1}%", frac.curl * 100.0);
-    println!("  Harmonic: {:.1}%", frac.harmonic * 100.0);
-    println!();
-    println!("  Connected components: {}", harmonic.n_components);
-    println!("  Can reach consensus? {}", harmonic.can_reach_consensus(0.5));
-    println!("  Isolated agents: {:?}", harmonic.isolated_agents());
-    println!();
-    println!("  → This dispute CANNOT resolve through the graph alone.");
-    println!("    The factions are disconnected. No path for agreement.");
-}
-```
-
-```
-Two disconnected factions:
-  Gradient: 0.0%
-  Curl:     0.0%
-  Harmonic: 100.0%
-
-  Connected components: 2
-  Can reach consensus? false
-  Isolated agents: []
-
-  → This dispute CANNOT resolve through the graph alone.
-    The factions are disconnected. No path for agreement.
-```
-
-100% harmonic. The disagreement is entirely topological. No amount of negotiation within the current graph structure will resolve it.
-
-## Prediction: Which Disputes Resolve?
-
-The `prediction` module classifies every edge:
-
-```rust
-use hodge_consensus::{OpinionGraph, HodgeComponents, prediction};
-
-fn main() {
-    let mut g = OpinionGraph::new();
-
-    // Mixed scenario: some edges will resolve, some won't
-    g.add_symmetric_edge("alice", "bob", 0.9);
-    g.add_symmetric_edge("bob", "carol", 0.6);
-    g.add_symmetric_edge("carol", "dave", 0.4);
-    g.add_symmetric_edge("dave", "eve", 0.8);
-    g.add_symmetric_edge("eve", "alice", 0.2);
-
-    let decomp = HodgeComponents::decompose(&g);
-    let report = prediction::predict_all(&decomp);
-
-    println!("Dispute Prediction Report");
-    println!("=========================");
-    println!();
-    println!("  Overall resolvability: {:.1}%", report.resolvability * 100.0);
-    println!("  Resolvable: {} of {} edges", report.n_resolvable, report.predictions.len());
-    println!("  Persistent: {} of {} edges", report.n_persistent, report.predictions.len());
-    println!();
-
-    println!("  {:4} | {:15} → {:15} | {:10} | {:6} | {}",
-        "Edge", "From", "To", "Dominant", "Resolve?", "Conf");
-    println!("  {}-+-{}-+-{}-+-{}-+-{}-+-{}",
-        "----", "-".repeat(15), "-".repeat(15), "-".repeat(10), "-".repeat(7), "-".repeat(4));
-
-    for pred in &report.predictions {
-        let (src, dst, w) = &g.edges[pred.edge_index];
-        println!(
-            "  {:4} | {:15} → {:15} | {:10} | {:6} | {:.2}",
-            format!("{:+.1f}", w),
-            src, dst,
-            pred.dominant_component,
-            if pred.will_resolve { "YES" } else { "NO" },
-            pred.confidence,
-        );
-    }
-}
-```
-
-```
-Dispute Prediction Report
-=========================
-
-  Overall resolvability: 80.0%
-  Resolvable: 8 of 10 edges
-  Persistent: 2 of 10 edges
-
-  Edge | From            → To              | Dominant   | Resolve | Conf
-  ----+-----------------+-----------------+------------+---------+----
-  +0.9 | alice           → bob             | gradient   | YES     | 0.84
-  +0.9 | bob             → alice           | gradient   | YES     | 0.89
-  +0.6 | bob             → carol           | gradient   | YES     | 0.70
-  +0.6 | carol           → bob             | gradient   | YES     | 0.76
-  +0.4 | carol           → dave            | harmonic   | NO      | 0.36
-  +0.4 | dave            → carol           | harmonic   | NO      | 0.42
-  +0.8 | dave            → eve             | gradient   | YES     | 0.87
-  +0.8 | eve             → dave            | gradient   | YES     | 0.91
-  +0.2 | eve             → alice           | curl       | YES     | 0.67
-  +0.2 | alice           → eve             | curl       | YES     | 0.61
-```
-
-The carol↔dave edge is harmonic-dominant — that's where the disagreement won't resolve. The eve↔alice edge is curl-dominant — it'll resolve eventually.
-
-## Agent Ranking: Who's Most Agreeable?
-
-Rank agents by how much their opinions align with the gradient (globally consistent) component.
-
-```rust
-use hodge_consensus::{OpinionGraph, HodgeComponents, ranking};
-
-fn main() {
-    let mut g = OpinionGraph::new();
-
-    g.add_symmetric_edge("cooperative", "bob", 0.9);
-    g.add_symmetric_edge("bob", "carol", 0.7);
-    g.add_symmetric_edge("carol", "contrarian", 0.1);
-    g.add_symmetric_edge("contrarian", "cooperative", -0.5);
-
-    let decomp = HodgeComponents::decompose(&g);
-    let report = ranking::rank_agents(&g, &decomp);
-
-    println!("Agent Agreeability Ranking:");
-    println!();
-    for r in &report.rankings {
-        let bar = "█".repeat((r.agreeability * 30.0) as usize);
-        println!(
-            "  {:3}. {:15} | agreeability={:.3} alignment={:+.3} |{}",
-            r.rank, r.agent, r.agreeability, r.gradient_alignment, bar
-        );
-    }
-
-    println!();
-    println!("Cooperators (top quartile): {:?}", report.cooperators);
-    println!("Contrarians (bottom quartile): {:?}", report.contrarians);
-}
-```
-
-```
-Agent Agreeability Ranking:
-
-   1. cooperative     | agreeability=0.923 alignment=+0.846 |███████████████████████████
-   2. bob             | agreeability=0.812 alignment=+0.624 |████████████████████████
-   3. carol           | agreeability=0.654 alignment=+0.308 |████████████████████
-   4. contrarian      | agreeability=0.321 alignment=-0.358 |█████████
-
-Cooperators (top quartile): ["cooperative"]
-Contrarians (bottom quartile): ["contrarian"]
-```
-
-"cooperative" has the highest agreeability — their opinions align with the global gradient. "contrarian" has the lowest — they're fighting the consensus.
-
-## Consensus: Finding the Global Ranking
-
-The consensus protocol projects agent opinions onto the gradient component and iterates to convergence.
-
-```rust
-use hodge_consensus::{OpinionGraph, HodgeComponents, consensus};
-
-fn main() {
-    let g = OpinionGraph::complete(5, 0.7);
-
-    let decomp = HodgeComponents::decompose(&g);
-    let state = consensus::run_consensus(&g, &decomp);
-
-    println!("Consensus Protocol:");
-    println!("  Iterations: {}", state.iterations);
-    println!("  Converged: {}", state.reached);
-    println!("  Consensus value: {:.4}", state.consensus_value);
-    println!();
-    println!("  Agent potentials (globally consistent ranking):");
-    for (i, &p) in state.potentials.iter().enumerate() {
-        println!("    agent_{}: {:.4}", i, p);
-    }
-
-    // DeGroot consensus from initial opinions
-    let opinions = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-    let degroot = consensus::degroot_consensus(&g, &opinions);
-    println!();
-    println!("  DeGroot consensus from opinions {:?}: {:.4}", opinions, degroot);
-}
-```
-
-```
-Consensus Protocol:
-  Iterations: 52
-  Converged: true
-  Consensus value: 0.0000
-
-  Agent potentials (globally consistent ranking):
-    agent_0: 0.0000
-    agent_1: 0.0000
-    agent_2: 0.0000
-    agent_3: 0.0000
-    agent_4: 0.0000
-
-  DeGroot consensus from opinions [1.0, 2.0, 3.0, 4.0, 5.0]: 3.0000
-```
-
-For a uniform complete graph, all agents converge to the same potential. The DeGroot consensus with initial opinions gives the weighted average (3.0 = mean of [1,2,3,4,5]).
-
-## Harmonic Analysis: Topology of Disagreement
-
-```rust
-use hodge_consensus::{OpinionGraph, HodgeComponents, HarmonicAnalysis};
-
-fn main() {
-    // Three groups: two connected + one isolated
-    let mut g = OpinionGraph::new();
-
-    // Group 1: triangle
-    g.add_symmetric_edge("x", "y", 0.8);
-    g.add_symmetric_edge("y", "z", 0.7);
-    g.add_symmetric_edge("z", "x", 0.6);
-
-    // Group 2: pair
-    g.add_symmetric_edge("a", "b", 0.9);
-
-    // Group 3: isolated
-    g.add_agent("loner");
-
-    let decomp = HodgeComponents::decompose(&g);
-    let ha = HarmonicAnalysis::from_decomposition(&g, &decomp);
-
-    println!("Harmonic Analysis:");
-    println!("  Connected components: {}", ha.n_components);
-    println!("  H¹ dimension: {}", ha.h1_dimension);
-    println!("  Energy in harmonic: {:.1}%", ha.energy_fraction * 100.0);
-    println!("  Can reach consensus? {}", ha.can_reach_consensus(0.5));
-    println!();
-    println!("  Components:");
-    for (i, component) in ha.components.iter().enumerate() {
-        println!("    Group {}: {:?}", i + 1, component);
-    }
-    println!("  Isolated agents: {:?}", ha.isolated_agents());
-}
-```
-
-```
-Harmonic Analysis:
-  Connected components: 3
-  H¹ dimension: 3
-  Energy in harmonic: 100.0%
-  Can reach consensus? false
-
-  Components:
-    Group 1: ["x", "y", "z"]
-    Group 2: ["a", "b"]
-    Group 3: ["loner"]
-
-  Isolated agents: ["loner"]
-```
-
-Three groups, zero consensus. The harmonic energy is 100% because all disagreement is topological.
-
-## Graph Construction Helpers
+The `OpinionGraph` models agents as nodes and agreement strengths as directed edges:
 
 ```rust
 use hodge_consensus::OpinionGraph;
 
-// Complete graph: all agents agree equally
-let complete = OpinionGraph::complete(4, 1.0);
-assert_eq!(complete.n(), 4);
-assert_eq!(complete.m(), 12); // n*(n-1) directed edges
+fn build_graph() {
+    let mut g = OpinionGraph::new();
 
-// Ring: cyclic agreement
-let ring = OpinionGraph::ring(5, 0.5);
-assert_eq!(ring.n(), 5);
-assert_eq!(ring.m(), 5);
+    // Add agents explicitly
+    g.add_agent("alice");
+    g.add_agent("bob");
 
-// Custom graph
-let mut g = OpinionGraph::new();
-g.add_agent("alice");
-g.add_symmetric_edge("alice", "bob", 0.9);
-g.add_edge("bob", "carol", 0.5); // directed
+    // Add directed edges (alice agrees with bob at strength 0.9)
+    g.add_edge("alice", "bob", 0.9);
+
+    // Symmetric edges (both directions same weight)
+    g.add_symmetric_edge("bob", "carol", 0.7);
+
+    println!("Agents: {} (alice, bob, carol)", g.n());
+    println!("Edges:  {}", g.m()); // 3 (alice→bob, bob→carol, carol→bob)
+}
+```
+
+### Graph Constructors
+
+```rust
+use hodge_consensus::OpinionGraph;
+
+fn graph_builders() {
+    // Complete graph: every agent agrees with every other at weight 1.0
+    let complete = OpinionGraph::complete(5, 1.0);
+    println!("Complete(5): {} agents, {} edges", complete.n(), complete.m()); // 5, 20
+
+    // Ring graph: each agent agrees with the next
+    let ring = OpinionGraph::ring(5, 1.0);
+    println!("Ring(5): {} agents, {} edges", ring.n(), ring.m()); // 5, 5
+}
+```
+
+### Graph Matrices
+
+```rust
+use hodge_consensus::OpinionGraph;
+
+fn graph_matrices() {
+    let mut g = OpinionGraph::new();
+    g.add_edge("a", "b", 2.0);
+    g.add_edge("a", "c", 3.0);
+    g.add_edge("b", "c", 1.0);
+
+    // Laplacian L = D - A (n×n)
+    let lap = g.laplacian();
+    println!("Laplacian: {:?}", lap);
+
+    // Adjacency matrix (n×n)
+    let adj = g.adjacency();
+    println!("Adjacency: {:?}", adj);
+
+    // Degree matrix (diagonal n×n)
+    let deg = g.degree_matrix();
+    println!("Degree: {:?}", deg);
+
+    // Edge-incidence matrix B (m×n)
+    let inc = g.incidence();
+    println!("Incidence: {:?}", inc);
+
+    // Opinion flow vector (length m)
+    let flow = g.flow();
+    println!("Flow: {:?}", flow); // [2.0, 3.0, 1.0]
+}
+```
+
+## Hodge Decomposition
+
+The core operation. Given an opinion graph, decompose every edge flow:
+
+```rust
+use hodge_consensus::{OpinionGraph, HodgeComponents};
+
+fn full_decomposition() {
+    let mut g = OpinionGraph::new();
+    g.add_symmetric_edge("alice", "bob", 0.9);
+    g.add_symmetric_edge("bob", "carol", 0.7);
+    g.add_symmetric_edge("carol", "dave", 0.4);
+    g.add_symmetric_edge("dave", "alice", 0.2);
+
+    let decomp = HodgeComponents::decompose(&g);
+
+    // Each edge gets three component values
+    for k in 0..g.m() {
+        println!("Edge {}: gradient={:.3} curl={:.3} harmonic={:.3}",
+            k, decomp.gradient[k], decomp.curl[k], decomp.harmonic[k]);
+    }
+
+    // Reconstruction: gradient + curl + harmonic = total
+    let reconstructed = decomp.reconstruct();
+    for k in 0..g.m() {
+        assert!((reconstructed[k] - decomp.total[k]).abs() < 1e-6);
+    }
+}
+```
+
+### Energy Analysis
+
+```rust
+use hodge_consensus::{OpinionGraph, HodgeComponents};
+
+fn energy_analysis() {
+    let g = OpinionGraph::complete(4, 0.7);
+    let decomp = HodgeComponents::decompose(&g);
+
+    // Norms of each component
+    let norms = decomp.norms();
+    println!("‖gradient‖ = {:.4}", norms.gradient_norm);
+    println!("‖curl‖     = {:.4}", norms.curl_norm);
+    println!("‖harmonic‖ = {:.4}", norms.harmonic_norm);
+    println!("‖total‖    = {:.4}", norms.total_norm);
+
+    // Energy fractions (should sum to ~1.0)
+    let frac = decomp.energy_fractions();
+    println!("Gradient energy: {:.1}%", frac.gradient * 100.0);
+    println!("Curl energy:     {:.1}%", frac.curl * 100.0);
+    println!("Harmonic energy: {:.1}%", frac.harmonic * 100.0);
+    println!("Sum:             {:.3}", frac.gradient + frac.curl + frac.harmonic);
+
+    // Orthogonality verification
+    let report = decomp.verify_orthogonality();
+    println!("⟨g,c⟩={:.6} ⟨g,h⟩={:.6} ⟨c,h⟩={:.6} orthogonal={}",
+        report.gradient_dot_curl,
+        report.gradient_dot_harmonic,
+        report.curl_dot_harmonic,
+        report.is_orthogonal);
+}
+```
+
+## Predicting Which Disputes Resolve
+
+This is the killer feature. For each disagreement (edge), predict whether it will resolve:
+
+```rust
+use hodge_consensus::{OpinionGraph, HodgeComponents};
+use hodge_consensus::prediction::{predict_all, predict_edge, will_resolve};
+
+fn predict_disputes() {
+    let mut g = OpinionGraph::new();
+    g.add_symmetric_edge("alice", "bob", 0.9);   // strong agreement
+    g.add_symmetric_edge("bob", "carol", -0.3);  // disagreement
+    g.add_symmetric_edge("carol", "alice", 0.5); // moderate agreement
+
+    let decomp = HodgeComponents::decompose(&g);
+
+    // Predict all edges at once
+    let report = predict_all(&decomp);
+    println!("Resolvability: {:.0}%", report.resolvability * 100.0);
+    println!("Resolvable: {}, Persistent: {}",
+        report.n_resolvable, report.n_persistent);
+
+    for pred in &report.predictions {
+        println!("Edge {}: {} (dominant: {}, confidence: {:.0}%)",
+            pred.edge_index,
+            if pred.will_resolve { "WILL RESOLVE" } else { "PERSISTS" },
+            pred.dominant_component,
+            pred.confidence * 100.0);
+    }
+
+    // Quick check for a single edge
+    println!("Edge 0 will resolve: {}", will_resolve(&decomp, 0));
+}
+```
+
+### Resolution Logic
+
+The prediction follows the Hodge structure:
+
+| Dominant component | Will resolve? | Why |
+|---|---|---|
+| Gradient | Yes | Globally consistent — there's a correct answer |
+| Curl | Yes (moderate confidence) | Cyclic but converges under discussion |
+| Harmonic | No | Topological obstruction — can't be resolved |
+
+## Agent Ranking: Who Is Most Agreeable?
+
+Rank agents by how well their opinions align with the gradient (globally consistent) component:
+
+```rust
+use hodge_consensus::{OpinionGraph, HodgeComponents};
+use hodge_consensus::ranking::rank_agents;
+
+fn rank_the_room() {
+    let mut g = OpinionGraph::new();
+    g.add_symmetric_edge("alice", "bob", 0.9);
+    g.add_symmetric_edge("bob", "carol", 0.5);
+    g.add_symmetric_edge("carol", "alice", 0.1);
+    g.add_symmetric_edge("alice", "dave", 0.8);
+    g.add_symmetric_edge("bob", "dave", 0.7);
+    g.add_symmetric_edge("carol", "dave", -0.3);
+
+    let decomp = HodgeComponents::decompose(&g);
+    let report = rank_agents(&g, &decomp);
+
+    println!("Agent Rankings (by agreeability):");
+    for r in &report.rankings {
+        println!("  #{}: {} — agreeability={:.2} gradient_alignment={:.2}",
+            r.rank, r.agent, r.agreeability, r.gradient_alignment);
+    }
+
+    println!("\nCooperators (top quartile): {:?}", report.cooperators);
+    println!("Contrarians (bottom quartile): {:?}", report.contrarians);
+}
+```
+
+### Single Agent Query
+
+```rust
+use hodge_consensus::{OpinionGraph, HodgeComponents};
+use hodge_consensus::ranking::agent_agreeability;
+
+fn check_agent() {
+    let g = OpinionGraph::complete(3, 1.0);
+    let decomp = HodgeComponents::decompose(&g);
+
+    let score = agent_agreeability(&g, &decomp, "agent_0");
+    println!("Agent 0 agreeability: {:.2}", score); // 0.0 to 1.0
+
+    // Unknown agent returns 0.0
+    let unknown = agent_agreeability(&g, &decomp, "ghost");
+    assert_eq!(unknown, 0.0);
+}
+```
+
+## Harmonic Analysis: Connected Components
+
+The harmonic component reveals the graph's topology:
+
+```rust
+use hodge_consensus::{OpinionGraph, HodgeComponents, HarmonicAnalysis};
+
+fn topology_check() {
+    // Disconnected: two separate pairs
+    let mut g = OpinionGraph::new();
+    g.add_edge("a", "b", 1.0);
+    g.add_edge("c", "d", 1.0);
+
+    let decomp = HodgeComponents::decompose(&g);
+    let ha = HarmonicAnalysis::from_decomposition(&g, &decomp);
+
+    println!("Connected components: {}", ha.n_components); // 2
+    println!("Components: {:?}", ha.components);           // [["a","b"], ["c","d"]]
+    println!("H¹ dimension: {}", ha.h1_dimension);        // 0
+
+    // Can these agents reach consensus? No — they're disconnected
+    assert!(!ha.can_reach_consensus(0.1));
+
+    // Isolated agents (components of size 1)
+    let mut g2 = OpinionGraph::new();
+    g2.add_agent("loner");
+    g2.add_edge("a", "b", 1.0);
+    let decomp2 = HodgeComponents::decompose(&g2);
+    let ha2 = HarmonicAnalysis::from_decomposition(&g2, &decomp2);
+    assert!(ha2.isolated_agents().contains(&"loner".to_string()));
+}
+```
+
+### H¹ Dimension (Independent Cycles)
+
+```rust
+use hodge_consensus::{OpinionGraph, HodgeComponents, HarmonicAnalysis};
+
+fn cycle_space() {
+    // Ring with extra chord: creates independent cycles
+    let mut g = OpinionGraph::ring(5, 1.0);
+    g.add_edge("agent_0", "agent_2", 0.5);
+    // 6 edges - 5 nodes + 1 component = 2
+
+    let decomp = HodgeComponents::decompose(&g);
+    let ha = HarmonicAnalysis::from_decomposition(&g, &decomp);
+    println!("H¹ dimension: {}", ha.h1_dimension); // 2
+}
+```
+
+## Consensus Protocol
+
+The consensus protocol iteratively updates agent opinions toward the gradient component:
+
+```rust
+use hodge_consensus::{OpinionGraph, HodgeComponents, ConsensusState, ConsensusConfig};
+use hodge_consensus::consensus::{run_consensus, run_consensus_with_config, degroot_consensus};
+
+fn consensus_demo() {
+    let g = OpinionGraph::complete(4, 1.0);
+    let decomp = HodgeComponents::decompose(&g);
+
+    // Default consensus
+    let state = run_consensus(&g, &decomp);
+    println!("Converged: {} ({} iterations)", state.reached, state.iterations);
+    println!("Consensus value: {:.4}", state.consensus_value);
+    println!("Potentials: {:?}", state.potentials);
+
+    // Custom configuration
+    let config = ConsensusConfig {
+        learning_rate: 0.5,
+        max_iterations: 100,
+        tolerance: 1e-6,
+    };
+    let state = run_consensus_with_config(&g, &decomp, config);
+    println!("Custom config converged in {} iterations", state.iterations);
+}
+```
+
+### DeGroot Consensus (Weighted Average)
+
+```rust
+use hodge_consensus::OpinionGraph;
+use hodge_consensus::consensus::degroot_consensus;
+
+fn degroot() {
+    let g = OpinionGraph::complete(3, 1.0);
+    let opinions = vec![1.0, 2.0, 3.0];
+
+    let consensus = degroot_consensus(&g, &opinions);
+    println!("DeGroot consensus: {:.2}", consensus);
+    // Close to the mean (2.0) for a complete uniform graph
+    assert!((consensus - 2.0).abs() < 0.5);
+}
+```
+
+## Full Pipeline Example
+
+```rust
+use hodge_consensus::{
+    OpinionGraph, HodgeComponents, HarmonicAnalysis,
+    ConsensusState, ConsensusConfig,
+};
+use hodge_consensus::ranking::rank_agents;
+use hodge_consensus::prediction::predict_all;
+use hodge_consensus::consensus::run_consensus;
+
+fn full_pipeline() {
+    // 1. Build the opinion graph
+    let mut g = OpinionGraph::new();
+    g.add_symmetric_edge("alice", "bob", 0.9);
+    g.add_symmetric_edge("bob", "carol", 0.7);
+    g.add_symmetric_edge("carol", "dave", 0.4);
+    g.add_symmetric_edge("dave", "alice", 0.2);
+
+    // 2. Decompose
+    let decomp = HodgeComponents::decompose(&g);
+    let norms = decomp.norms();
+    println!("=== Decomposition ===");
+    println!("Gradient: {:.3}  Curl: {:.3}  Harmonic: {:.3}",
+        norms.gradient_norm, norms.curl_norm, norms.harmonic_norm);
+
+    // 3. Topology check
+    let ha = HarmonicAnalysis::from_decomposition(&g, &decomp);
+    println!("\n=== Topology ===");
+    println!("Components: {}", ha.n_components);
+    println!("Can reach consensus: {}", ha.can_reach_consensus(0.5));
+
+    // 4. Agent ranking
+    let rankings = rank_agents(&g, &decomp);
+    println!("\n=== Rankings ===");
+    for r in &rankings.rankings {
+        println!("  #{}: {} (agreeability: {:.2})", r.rank, r.agent, r.agreeability);
+    }
+
+    // 5. Dispute prediction
+    let predictions = predict_all(&decomp);
+    println!("\n=== Predictions ===");
+    println!("Resolvability: {:.0}%", predictions.resolvability * 100.0);
+    for p in &predictions.predictions {
+        println!("  Edge {}: {} ({})", p.edge_index,
+            if p.will_resolve { "RESOLVE" } else { "PERSIST" },
+            p.dominant_component);
+    }
+
+    // 6. Consensus
+    let state = run_consensus(&g, &decomp);
+    println!("\n=== Consensus ===");
+    println!("Converged: {} in {} iterations", state.reached, state.iterations);
+    println!("Consensus value: {:.4}", state.consensus_value);
+}
+```
+
+## Serialization
+
+All major types support serde:
+
+```rust
+use hodge_consensus::{OpinionGraph, HodgeComponents};
+
+fn serde_example() {
+    let mut g = OpinionGraph::new();
+    g.add_edge("a", "b", 1.0);
+    g.add_edge("b", "c", 0.5);
+
+    let decomp = HodgeComponents::decompose(&g);
+
+    // Serialize to JSON
+    let json = serde_json::to_string(&decomp).unwrap();
+    println!("{}", json);
+
+    // Deserialize back
+    let decomp2: HodgeComponents = serde_json::from_str(&json).unwrap();
+    assert_eq!(decomp.total.len(), decomp2.total.len());
+}
 ```
 
 ## API Reference
 
-### Core
-- **`OpinionGraph`** — Directed weighted graph of agent opinions
-  - `.add_agent(name)`, `.add_edge(src, dst, weight)`, `.add_symmetric_edge(a, b, w)`
-  - `.laplacian()`, `.adjacency()`, `.degree_matrix()`, `.incidence()`
-  - `.flow()` — opinion flow vector
-  - `OpinionGraph::complete(n, w)`, `OpinionGraph::ring(n, w)` — constructors
+### `graph` Module — `OpinionGraph`
 
-### Decomposition
-- **`HodgeComponents::decompose(&graph)`** — the core decomposition
-  - `.gradient`, `.curl`, `.harmonic`, `.total` — `Vec<f64>` per edge
-  - `.norms()` → `ComponentNorms` (L² norms)
-  - `.energy_fractions()` → what % of disagreement is each type
-  - `.verify_orthogonality()` → `OrthogonalityReport`
-  - `.reconstruct()` → gradient + curl + harmonic (should equal total)
+| Method | Description |
+|---|---|
+| `new()` | Empty graph |
+| `add_agent(name)` | Add a node |
+| `add_edge(src, dst, weight)` | Directed edge |
+| `add_symmetric_edge(a, b, weight)` | Bidirectional edge |
+| `n()` / `m()` | Node / edge count |
+| `laplacian()` | L = D − A (n×n) |
+| `adjacency()` | A (n×n) |
+| `degree_matrix()` | D (diagonal n×n) |
+| `incidence()` | B (m×n) |
+| `flow()` | Edge flow vector |
+| `complete(n, w)` | Complete graph |
+| `ring(n, w)` | Ring graph |
 
-### Prediction
-- **`predict_all(&decomp)`** → `PredictionReport` (per-edge predictions)
-- **`predict_edge(&decomp, k)`** → `DisputePrediction` for edge k
-- **`will_resolve(&decomp, k)`** → `bool`
-- **`resolvability_score(&decomp)`** → `f64` (0..1)
+### `decomposition` Module — `HodgeComponents`
 
-### Ranking
-- **`rank_agents(&graph, &decomp)`** → `RankingReport`
-  - `.rankings` — sorted by agreeability
-  - `.cooperators` / `.contrarians` — top/bottom quartile
-- **`agent_agreeability(&graph, &decomp, name)`** → `f64`
+| Method | Description |
+|---|---|
+| `decompose(graph)` | Compute decomposition |
+| `norms()` | ‖g‖, ‖c‖, ‖h‖, ‖total‖ |
+| `energy_fractions()` | Fraction in each component |
+| `verify_orthogonality()` | Check ⟨g,c⟩ ≈ ⟨g,h⟩ ≈ ⟨c,h⟩ ≈ 0 |
+| `reconstruct()` | g + c + h (should equal total) |
 
-### Consensus
-- **`run_consensus(&graph, &decomp)`** → `ConsensusState`
-- **`run_consensus_with_config(&graph, &decomp, config)`** — custom params
-- **`degroot_consensus(&graph, &opinions)`** → `f64` weighted average
+### `harmonic` Module — `HarmonicAnalysis`
 
-### Harmonic Analysis
-- **`HarmonicAnalysis::from_decomposition(&graph, &decomp)`**
-  - `.n_components` — connected components
-  - `.h1_dimension` — independent cycles
-  - `.can_reach_consensus(threshold)` → `bool`
-  - `.isolated_agents()` → `Vec<String>`
+| Method | Description |
+|---|---|
+| `from_decomposition(graph, decomp)` | Compute harmonic analysis |
+| `can_reach_consensus(threshold)` | Single component + low harmonic? |
+| `isolated_agents()` | Agents in singleton components |
+| `h1_dimension` | Dimension of harmonic space |
 
-## Why Hodge?
+### `prediction` Module
 
-The Hodge decomposition comes from differential geometry. On a smooth manifold, any differential form decomposes into exact + co-exact + harmonic. The discrete version on graphs gives us the same three-way split for opinion flows.
+| Function | Description |
+|---|---|
+| `predict_all(decomp)` | Predict all edges |
+| `predict_edge(decomp, idx)` | Predict single edge |
+| `will_resolve(decomp, idx)` | Quick boolean check |
+| `resolvability_score(decomp)` | Overall resolvability 0..1 |
 
-| Component | Math | What It Means | Will Resolve? |
-|-----------|------|---------------|---------------|
-| Gradient | dφ (exact) | Derivable from a global ranking | Already resolved |
-| Curl | δψ (co-exact) | Cyclic flow around loops | Yes (converges) |
-| Harmonic | Δω = 0 | Topological obstruction | No (structural) |
+### `ranking` Module
 
-This isn't an analogy — it's the same mathematics. The graph Laplacian is the discrete Laplacian. The Hodge decomposition on graphs IS the Hodge decomposition from geometry, applied to finite structures.
+| Function | Description |
+|---|---|
+| `rank_agents(graph, decomp)` | Full ranking report |
+| `agent_agreeability(graph, decomp, name)` | Single agent score |
+
+### `consensus` Module
+
+| Function | Description |
+|---|---|
+| `run_consensus(graph, decomp)` | Default config consensus |
+| `run_consensus_with_config(graph, decomp, config)` | Custom config |
+| `degroot_consensus(graph, opinions)` | Weighted average |
+
+## Building and Testing
+
+```bash
+cargo build
+cargo test
+```
+
+All tests are self-contained — no external services needed.
 
 ## License
 
-MIT
+MIT OR Apache-2.0
