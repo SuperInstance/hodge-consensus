@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::decomposition::HodgeComponents;
 
 /// Prediction for a specific dispute (edge).
+/// Prediction for a specific edge dispute: will it resolve, confidence, and dominant component.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DisputePrediction {
     /// Whether the dispute will resolve.
@@ -22,6 +23,7 @@ pub struct DisputePrediction {
 }
 
 /// Overall prediction report for all disputes.
+/// Overall prediction report with per-edge predictions and aggregate resolvability.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PredictionReport {
     /// Per-edge predictions.

@@ -13,6 +13,9 @@ use crate::decomposition::{EnergyFractions, HodgeComponents};
 use crate::graph::OpinionGraph;
 
 /// Analysis of the harmonic (persistent) component.
+/// Analysis of the harmonic (topologically persistent) component.
+///
+/// Reveals connected components, isolated agents, and whether consensus is topologically possible.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HarmonicAnalysis {
     /// The harmonic flow component (one entry per edge).

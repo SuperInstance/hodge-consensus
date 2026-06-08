@@ -10,6 +10,7 @@ use crate::decomposition::HodgeComponents;
 use crate::graph::OpinionGraph;
 
 /// Result of running a consensus protocol step.
+/// Result of running a consensus protocol: node potentials and convergence info.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsensusState {
     /// Current node potentials (opinion scores).
@@ -25,6 +26,7 @@ pub struct ConsensusState {
 }
 
 /// Configuration for the consensus protocol.
+/// Tuning parameters for the iterative consensus solver.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsensusConfig {
     /// Learning rate for gradient updates.

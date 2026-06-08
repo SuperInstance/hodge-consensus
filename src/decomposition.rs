@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 use crate::graph::OpinionGraph;
 
 /// The three orthogonal components of a Hodge decomposition.
+///
+/// Every edge flow decomposes uniquely as gradient + curl + harmonic.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HodgeComponents {
     /// Gradient component: edge flows that are exact (derivable from a node potential).
@@ -154,6 +156,7 @@ impl HodgeComponents {
 }
 
 /// Norms of the three Hodge components.
+/// L² norms of each Hodge component.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentNorms {
     pub gradient_norm: f64,
@@ -163,6 +166,7 @@ pub struct ComponentNorms {
 }
 
 /// Fraction of total energy in each component.
+/// Fraction of total disagreement energy in each component (sums to ~1.0).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnergyFractions {
     pub gradient: f64,
@@ -171,6 +175,7 @@ pub struct EnergyFractions {
 }
 
 /// Orthogonality verification between Hodge components.
+/// Verification that Hodge components are mutually orthogonal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrthogonalityReport {
     pub gradient_dot_curl: f64,

@@ -10,6 +10,7 @@ use crate::decomposition::HodgeComponents;
 use crate::graph::OpinionGraph;
 
 /// Ranking of a single agent.
+/// Ranking of a single agent by agreeability score.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentRanking {
     /// Agent name.
@@ -23,6 +24,7 @@ pub struct AgentRanking {
 }
 
 /// Complete ranking of all agents.
+/// Complete ranking of all agents with cooperators and contrarians identified.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RankingReport {
     /// Agents ranked by agreeability (best first).

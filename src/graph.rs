@@ -12,6 +12,10 @@ use std::collections::HashMap;
 /// Each node represents an agent (by name). Each directed edge `(src, dst, w)`
 /// records that `src` agrees with `dst` at strength `w` (positive = agreement,
 /// negative = disagreement).
+/// A directed weighted graph of agent opinions.
+///
+/// Nodes are agents, edges are pairwise agreement strengths.
+/// The combinatorial Laplacian L = D − A is the central operator for Hodge decomposition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpinionGraph {
     /// Ordered list of unique agent names.
