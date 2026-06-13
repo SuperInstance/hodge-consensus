@@ -1,116 +1,192 @@
-use crate::error::HodgeError;
-use serde::{Deserialize, Serialize};
+//! Directed weighted graph of agent opinions.
+//!
+//! An opinion graph models agents as nodes and agreement strengths as weighted
+//! directed edges. The combinatorial Laplacian derived from this graph is the
+//! central operator used in the Hodge decomposition.
 
-/// A weighted undirected graph with `n` nodes and weighted edges.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct WeightedGraph {
-    /// Number of nodes.
-    pub n: usize,
-    /// Edge list: (source, target, weight). We store edges in canonical order (i ≤ j).
-    pub edges: Vec<(usize, usize, f64)>,
-    /// Dense adjacency matrix (n×n), zero means no edge.
-    pub adjacency: Vec<Vec<f64>>,
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// A directed weighted graph of agent opinions.
+///
+/// Each node represents an agent (by name). Each directed edge `(src, dst, w)`
+/// records that `src` agrees with `dst` at strength `w` (positive = agreement,
+/// negative = disagreement).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpinionGraph {
+    /// Ordered list of unique agent names.
+    pub agents: Vec<String>,
+    /// Directed edges: (source, target, weight).
+    pub edges: Vec<(String, String, f64)>,
 }
 
-impl WeightedGraph {
-    /// Build an empty graph with `n` isolated nodes.
-    pub fn new(n: usize) -> Self {
+impl OpinionGraph {
+    /// Create an empty graph.
+    pub fn new() -> Self {
         Self {
-            n,
+            agents: Vec::new(),
             edges: Vec::new(),
-            adjacency: vec![vec![0.0; n]; n],
         }
     }
 
-    /// Add an undirected edge (i, j) with weight `w`.
-    /// Returns an error if node indices are out of bounds.
-    pub fn add_edge(&mut self, i: usize, j: usize, w: f64) -> Result<(), HodgeError> {
-        if i >= self.n || j >= self.n {
-            return Err(HodgeError::NodeOutOfBounds {
-                index: i.max(j),
-                n: self.n,
-            });
+    /// Create a graph from an existing agent list (no edges).
+    pub fn with_agents(agents: Vec<String>) -> Self {
+        Self {
+            agents,
+            edges: Vec::new(),
         }
-        let (a, b) = if i <= j { (i, j) } else { (j, i) };
-        // Update or add edge
-        if let Some(pos) = self.edges.iter().position(|&(u, v, _)| u == a && v == b) {
-            self.edges[pos].2 += w;
-        } else {
-            self.edges.push((a, b, w));
+    }
+
+    /// Add an agent. No-op if already present.
+    pub fn add_agent(&mut self, name: &str) {
+        if !self.agents.contains(&name.to_string()) {
+            self.agents.push(name.to_string());
         }
-        self.adjacency[i][j] += w;
-        self.adjacency[j][i] += w;
-        Ok(())
+    }
+
+    /// Add a directed edge. Agents are added automatically if new.
+    pub fn add_edge(&mut self, src: &str, dst: &str, weight: f64) {
+        self.add_agent(src);
+        self.add_agent(dst);
+        self.edges.push((src.to_string(), dst.to_string(), weight));
+    }
+
+    /// Add a symmetric (bidirectional) edge with the same weight.
+    pub fn add_symmetric_edge(&mut self, a: &str, b: &str, weight: f64) {
+        self.add_edge(a, b, weight);
+        self.add_edge(b, a, weight);
+    }
+
+    /// Number of agents (nodes).
+    pub fn n(&self) -> usize {
+        self.agents.len()
     }
 
     /// Number of edges.
-    pub fn num_edges(&self) -> usize {
+    pub fn m(&self) -> usize {
         self.edges.len()
     }
 
-    /// Compute the edge-node incidence matrix B (m × n).
-    ///
-    /// For oriented edge (i, j) with i < j:
-    ///   B[row][i] = -sqrt(weight), B[row][j] = +sqrt(weight)
-    pub fn incidence_matrix(&self) -> Vec<Vec<f64>> {
-        let m = self.edges.len();
-        let n = self.n;
-        let mut b = vec![vec![0.0; n]; m];
-        for (row, &(i, j, w)) in self.edges.iter().enumerate() {
-            let s = w.sqrt();
-            b[row][i] = -s;
-            b[row][j] = s;
-        }
-        b
+    /// Build agent-name → index map.
+    pub fn index_map(&self) -> HashMap<String, usize> {
+        self.agents
+            .iter()
+            .enumerate()
+            .map(|(i, a)| (a.clone(), i))
+            .collect()
     }
 
-    /// Compute the graph Laplacian L = BᵀB (n × n).
+    /// Weighted out-degree of agent `i`.
+    pub fn out_degree(&self, idx: usize) -> f64 {
+        let name = &self.agents[idx];
+        self.edges
+            .iter()
+            .filter(|(s, _, _)| s == name)
+            .map(|(_, _, w)| w.abs())
+            .sum()
+    }
+
+    /// Weighted in-degree of agent `i`.
+    pub fn in_degree(&self, idx: usize) -> f64 {
+        let name = &self.agents[idx];
+        self.edges
+            .iter()
+            .filter(|(_, d, _)| d == name)
+            .map(|(_, _, w)| w.abs())
+            .sum()
+    }
+
+    /// Compute the combinatorial Laplacian **L = D − A** (n×n).
     ///
-    /// L[i][i] = sum of weights incident to i
-    /// L[i][j] = -weight(i,j) if edge exists
+    /// * `D` is the diagonal weighted out-degree matrix.
+    /// * `A` is the weighted adjacency matrix (entry `A[i][j]` = weight of edge i→j).
     pub fn laplacian(&self) -> Vec<Vec<f64>> {
-        let n = self.n;
+        let n = self.n();
         let mut l = vec![vec![0.0; n]; n];
-        for &(i, j, w) in &self.edges {
-            l[i][i] += w;
-            l[j][j] += w;
-            l[i][j] -= w;
-            l[j][i] -= w;
+        let idx = self.index_map();
+
+        for (src, dst, w) in &self.edges {
+            let i = idx[src];
+            let j = idx[dst];
+            l[i][j] -= w.abs();
+            l[i][i] += w.abs();
         }
         l
     }
 
-    /// Find all oriented triangles (i,j,k) with i<j<k that form 3-cliques.
-    /// Returns list of (i, j, k, edge_ij_idx, edge_jk_idx, edge_ik_idx) or None for missing edges.
-    #[allow(clippy::type_complexity)]
-    pub fn triangles(&self) -> Vec<(usize, usize, usize, Option<usize>, Option<usize>, Option<usize>)> {
-        let mut tris = Vec::new();
-        for i in 0..self.n {
-            for j in (i + 1)..self.n {
-                if self.adjacency[i][j] == 0.0 {
-                    continue;
-                }
-                for k in (j + 1)..self.n {
-                    if self.adjacency[i][k] > 0.0 && self.adjacency[j][k] > 0.0 {
-                        let eij = self.edges.iter().position(|&(u, v, _)| u == i && v == j);
-                        let ejk = self.edges.iter().position(|&(u, v, _)| u == j && v == k);
-                        let eik = self.edges.iter().position(|&(u, v, _)| u == i && v == k);
-                        tris.push((i, j, k, eij, ejk, eik));
-                    }
+    /// Adjacency matrix (n×n). `A[i][j]` = absolute weight of edge i→j, or 0.
+    pub fn adjacency(&self) -> Vec<Vec<f64>> {
+        let n = self.n();
+        let mut a = vec![vec![0.0; n]; n];
+        let idx = self.index_map();
+        for (src, dst, w) in &self.edges {
+            let i = idx[src];
+            let j = idx[dst];
+            a[i][j] += w.abs();
+        }
+        a
+    }
+
+    /// Degree matrix (diagonal n×n).
+    pub fn degree_matrix(&self) -> Vec<Vec<f64>> {
+        let n = self.n();
+        let mut d = vec![vec![0.0; n]; n];
+        for i in 0..n {
+            d[i][i] = self.out_degree(i);
+        }
+        d
+    }
+
+    /// Edge-incidence matrix **B** (m × n) for the directed edges.
+    /// Row for edge k=(i→j): `B[k][i] = +√w`, `B[k][j] = −√w`.
+    pub fn incidence(&self) -> Vec<Vec<f64>> {
+        let n = self.n();
+        let m = self.m();
+        let mut b = vec![vec![0.0; n]; m];
+        let idx = self.index_map();
+        for (k, (src, dst, w)) in self.edges.iter().enumerate() {
+            let i = idx[src];
+            let j = idx[dst];
+            let s = w.abs().sqrt().max(0.0);
+            b[k][i] = s;
+            b[k][j] = -s;
+        }
+        b
+    }
+
+    /// Opinion-flow vector (length m): one entry per edge.
+    pub fn flow(&self) -> Vec<f64> {
+        self.edges.iter().map(|(_, _, w)| *w).collect()
+    }
+
+    /// Build a complete graph with uniform weight (for testing / demos).
+    pub fn complete(n: usize, weight: f64) -> Self {
+        let agents: Vec<String> = (0..n).map(|i| format!("agent_{i}")).collect();
+        let mut edges = Vec::new();
+        for i in 0..n {
+            for j in 0..n {
+                if i != j {
+                    edges.push((agents[i].clone(), agents[j].clone(), weight));
                 }
             }
         }
-        tris
+        Self { agents, edges }
+    }
+
+    /// Build a ring graph: each agent agrees with the next (cyclic).
+    pub fn ring(n: usize, weight: f64) -> Self {
+        let agents: Vec<String> = (0..n).map(|i| format!("agent_{i}")).collect();
+        let mut edges = Vec::new();
+        for i in 0..n {
+            let j = (i + 1) % n;
+            edges.push((agents[i].clone(), agents[j].clone(), weight));
+        }
+        Self { agents, edges }
     }
 }
 
-/// Build a complete graph on `n` nodes with uniform weight `w`.
-pub fn complete_graph(n: usize, w: f64) -> WeightedGraph {
-    let mut g = WeightedGraph::new(n);
-    for i in 0..n {
-        for j in (i + 1)..n {
-            g.add_edge(i, j, w).unwrap();
-        }
+impl Default for OpinionGraph {
+    fn default() -> Self {
+        Self::new()
     }
-    g
 }
